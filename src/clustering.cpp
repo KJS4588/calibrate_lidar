@@ -1,15 +1,17 @@
 #include "calibrate_lidar/clustering.h"
+#include "math.h"
+#include "cmath"
 
 void Cluster::initSetup(){
-    point_sub_ = nh_.subscribe("/aligned_points", 10, &Cluster::clusterCallback, this);
+	point_sub_ = nh_.subscribe("/velodyne_points", 10, &Cluster::clusterCallback, this);
     pub_ = nh_.advertise<sensor_msgs::PointCloud2>("/cloud_filtered", 10);
     point_pub_ = nh_.advertise<visualization_msgs::Marker>("/mean_point",10);
 }
 
 void Cluster::clusterCallback(const sensor_msgs::PointCloud2ConstPtr &input){
-    pcl::PointCloud<PointType>::Ptr cloud (new pcl::PointCloud<PointType>), cloud_filterd (new pcl::PointCloud<PointType>);
+    pcl::PointCloud<PointType>::Ptr msg (new pcl::PointCloud<PointType>), cloud (new pcl::PointCloud<PointType>), cloud_filterd (new pcl::PointCloud<PointType>);
 
-    pcl::fromROSMsg(*input, *cloud);
+    pcl::fromROSMsg(*input, *msg);
 
     /*pcl::ConditionAnd<PointType>::Ptr range_cond (new pcl::ConditionAnd<PointType>());
     range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new pcl::FieldComparison<PointType> ("z", pcl::ComparisonOps::GT, 0.0)));  //eg. z축으로 0.00보다 큰값(GT:Greater Than)
@@ -20,16 +22,24 @@ void Cluster::clusterCallback(const sensor_msgs::PointCloud2ConstPtr &input){
     condrem.setKeepOrganized(false);       //
     condrem.filter (*cloud_filterd);     //필터 적용 
     */
-	
+	for (size_t i=0;i<msg->points.size();i++){
+		PointType point;
+        point.x = msg->points[i].x*cos(12*M_PI/180) + msg->points[i].z*sin(12*M_PI/180);
+        point.y = msg->points[i].y;
+        point.z = -msg->points[i].z*sin(12*M_PI/180) + msg->points[i].z*cos(12*M_PI/180); 
+        point.intensity = msg->points[i].intensity;         
+		cloud->points.push_back(point);  
+	}     
+	cloud->header.frame_id = "velodyne";	
     pcl::PassThrough<PointType> pass;
     pass.setInputCloud(cloud);
     pass.setFilterFieldName ("x");
-    pass.setFilterLimits(10, 20);
+    pass.setFilterLimits(0.5, 10);
     pass.filter(*cloud);
     
     pass.setInputCloud(cloud);
     pass.setFilterFieldName("y");
-    pass.setFilterLimits(-1.5, 2);
+    pass.setFilterLimits(-6, 0);
     pass.filter(*cloud);
 
 
@@ -173,7 +183,7 @@ void Cluster::clusterCallback(const sensor_msgs::PointCloud2ConstPtr &input){
 
     sensor_msgs::PointCloud2 result;
     pcl_conversions::fromPCL(cloud_p, result);
-    result.header.frame_id = "map";
+    result.header.frame_id = "velodyne";
     pub_.publish(result);
 
 }
